@@ -4,7 +4,7 @@ import telegram
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-OWNER_ID = os.getenv("OWNER_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 bot = telegram.Bot(token=BOT_TOKEN)
 app = Flask(__name__)
@@ -20,7 +20,7 @@ def webhook():
             f"ID: {user.id}\n\n"
             f"{text}"
         )
-        bot.send_message(chat_id=OWNER_ID, text=msg)
+        bot.send_message(chat_id=CHANNEL_ID, text=msg)
     return "ok"
 
 if __name__ == "__main__":
