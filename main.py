@@ -22,3 +22,7 @@ def webhook():
         )
         bot.send_message(chat_id=OWNER_ID, text=msg)
     return "ok"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Render передаёт PORT через env
+    app.run(host="0.0.0.0", port=port)
