@@ -16,8 +16,7 @@ def webhook():
         user = update.message.from_user
         text = update.message.text.strip()
         msg = (
-            f"📝 Отчёт от @{user.username or user.full_name}\n"
-            f"ID: {user.id}\n\n"
+            f"📝 Отчёт от {user.full_name} (@{user.username})\n\n"
             f"{text}"
         )
         bot.send_message(chat_id=CHANNEL_ID, text=msg)
