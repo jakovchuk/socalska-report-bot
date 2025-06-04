@@ -3,7 +3,7 @@ services:
     name: telegram-report-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
+    startCommand: gunicorn main:app
     envVars:
       - key: BOT_TOKEN
         sync: false
