@@ -3,8 +3,8 @@ from flask import Flask, request
 import telegram
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 bot = telegram.Bot(token=BOT_TOKEN)
 app = Flask(__name__)
@@ -20,5 +20,10 @@ def webhook():
             f"ID: {user.id}\n\n"
             f"{text}"
         )
-        bot.send_message(chat_id=OWNER_ID, text=msg)
+        bot.send_message(chat_id=CHANNEL_ID, text=msg)
     return "ok"
+
+# Run Server
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
