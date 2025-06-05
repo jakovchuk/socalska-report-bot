@@ -151,7 +151,7 @@ def ask_pioneer(chat_id: int, context: CallbackContext):
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
-    text = "Количество часов (0-100)"
+    text = "Количество часов (1-100)"
     if edit and msg:
         msg.edit_text(text)
     else:
@@ -175,7 +175,7 @@ def text_handler(update: Update, context: CallbackContext):
 
     if step == Step.STUDIES:
         if not text.isdigit() or not (0 <= int(text) <= 10):
-            update.message.reply_text("Пожалуйста, введите число от 0 до 10")
+            update.message.reply_text("Введите число от 0 до 10")
             return
         context.user_data["studies"] = text
         ask_pioneer(chat_id, context)
@@ -183,8 +183,8 @@ def text_handler(update: Update, context: CallbackContext):
         return
 
     if step == Step.HOURS:
-        if not text.isdigit() or not (0 <= int(text) <= 100):
-            update.message.reply_text("Введите число от 0 до 100")
+        if not text.isdigit() or not (1 <= int(text) <= 100):
+            update.message.reply_text("Введите число от 1 до 100")
             return
         context.user_data["hours"] = text
         ask_comment(chat_id, context)
