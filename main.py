@@ -1,6 +1,7 @@
 import os
 import logging
-import threading
+from enum import Enum, auto
+
 from flask import Flask, request
 import telegram
 from telegram import (
@@ -9,160 +10,239 @@ from telegram import (
     Update,
 )
 from telegram.ext import (
-    Dispatcher,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
     Filters,
-    ConversationHandler,
     CallbackContext,
+    Dispatcher,
 )
 
-# ====== ENV VARS ======
+# =====================
+# ENVIRONMENT VARIABLES
+# =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # -100XXXXXXXXXXXX
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "secret")
 
 if not BOT_TOKEN or not CHANNEL_ID:
-    raise RuntimeError("BOT_TOKEN and CHANNEL_ID must be set as env vars!")
+    raise RuntimeError("BOT_TOKEN and CHANNEL_ID must be set in env vars")
 
-# ====== Telegram setup ======
-bot = telegram.Bot(token=BOT_TOKEN)
-# Use a Dispatcher without a Queue (sufficient for light‑weight bots via webhook)
-dispatcher = Dispatcher(bot=bot, update_queue=None, use_context=True)
-
+# =============
+# INITIAL SETUP
+# =============
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+bot = telegram.Bot(BOT_TOKEN)
+app = Flask(__name__)
 
-# ====== Conversation states ======
-PREACH, STUDIES, HOURS, COMMENT = range(4)
+dp = Dispatcher(bot, None, use_context=True)
 
-# ====== Handler callbacks ======
+
+class Step(Enum):
+    NONE = auto()
+    PREACHING = auto()
+    STUDIES = auto()
+    PIONEER = auto()
+    HOURS = auto()
+    COMMENT = auto()
+
+
+# ---------------
+# Helper functions
+# ---------------
+
+
+def send_main_menu(chat_id: int, context: CallbackContext):
+    """Sends the persistent main menu with the inline button and ensures /report appears."""
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📝 Отправить отчёт", callback_data="report")]]
+    )
+    context.bot.send_message(
+        chat_id=chat_id,
+        text="Нажмите кнопку ниже, чтобы заполнить новый отчёт:",
+        reply_markup=keyboard,
+    )
+
+
+# -----------------
+# Conversation flow
+# -----------------
+
 
 def start(update: Update, context: CallbackContext):
-    """Send a button to begin the report."""
-    keyboard = [[InlineKeyboardButton("📝 Отправить отчёт", callback_data="start_report")]]
-    update.message.reply_text(
-        "Привет! Нажмите кнопку ниже, чтобы отправить отчёт.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+    """/start handler - show menu and register bot commands."""
+    bot.set_my_commands(
+        [("report", "Отправить отчёт")]
     )
+    send_main_menu(update.effective_chat.id, context)
 
 
-def start_report_cb(update: Update, context: CallbackContext):
-    """Entry‑point after the user presses the main button."""
+def report_cmd(update: Update, context: CallbackContext):
+    """/report command - start the reporting flow (same as pressing the button)."""
+    ask_preaching(update.effective_chat.id, context)
+    context.user_data["step"] = Step.PREACHING
+
+
+def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
-    # Reset per‑user data
-    context.user_data.clear()
-    keyboard = [
+
+    data = query.data
+    step = context.user_data.get("step", Step.NONE)
+
+    if data == "report":
+        # Start flow
+        ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data.clear()
+        context.user_data["step"] = Step.PREACHING
+        return
+
+    if step == Step.PREACHING:
+        context.user_data["preaching"] = "Да" if data == "yes" else "Нет"
+        if data == "no":
+            finish_report(update.effective_user, context, chat_id=query.message.chat_id)
+            return
+        # if "yes"
+        ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Step.STUDIES
+        return
+
+    if step == Step.PIONEER:
+        context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
+        if data == "no":
+            # отправить отчёт с прочерками для часов и комментария
+            finish_report(update.effective_user, context, chat_id=query.message.chat_id)
+            return
+        # If pioneer Yes – ask hours
+        ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Step.HOURS
+        return
+
+
+# ---------- questions helpers ------------
+
+def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    keyboard = InlineKeyboardMarkup(
         [
-            InlineKeyboardButton("Да", callback_data="preach_yes"),
-            InlineKeyboardButton("Нет", callback_data="preach_no"),
+            [InlineKeyboardButton("Да", callback_data="yes"), InlineKeyboardButton("Нет", callback_data="no")]
         ]
-    ]
-    query.edit_message_text(
-        "1️⃣ Участвовали ли вы в проповеди?", reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return PREACH
+    if edit and msg:
+        msg.edit_text("Участвовали ли вы в проповедническом служении?", reply_markup=keyboard)
+    else:
+        context.bot.send_message(chat_id, "Участвовали ли вы в проповедническом служении?", reply_markup=keyboard)
 
 
-def preach_answer_cb(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-    participated = query.data == "preach_yes"
-    context.user_data["preach"] = "Да" if participated else "Нет"
-
-    if not participated:
-        # Skip rest, send report immediately
-        context.user_data["studies"] = "‑"
-        context.user_data["hours"] = "‑"
-        context.user_data["comment"] = "‑"
-        send_report(update.effective_user, context)
-        query.edit_message_text("Спасибо! Отчёт отправлен.")
-        return ConversationHandler.END
-
-    # Ask for number of studies
-    query.edit_message_text("2️⃣ Количество изучений (1‑10):")
-    return STUDIES
+def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Сколько библейских изучений? (0-10)"
+    if edit and msg:
+        msg.edit_text(text)
+    else:
+        context.bot.send_message(chat_id, text)
 
 
-def studies_msg(update: Update, context: CallbackContext):
+def ask_pioneer(chat_id: int, context: CallbackContext):
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Да", callback_data="yes"), InlineKeyboardButton("Нет", callback_data="no")]
+        ]
+    )
+    context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
+
+
+def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Количество часов (0-100)"
+    if edit and msg:
+        msg.edit_text(text)
+    else:
+        context.bot.send_message(chat_id, text)
+
+
+def ask_comment(chat_id: int, context: CallbackContext):
+    context.bot.send_message(chat_id, "Комментарий (любой текст, можно пропустить, отправив '-'):")
+
+
+# ------------- message handlers -------------
+
+def text_handler(update: Update, context: CallbackContext):
+    step = context.user_data.get("step")
+    if not step:
+        # ignore stray messages
+        return
+
+    chat_id = update.effective_chat.id
     text = update.message.text.strip()
-    if not text.isdigit() or not (1 <= int(text) <= 10):
-        update.message.reply_text("Введите число от 1 до 10.")
-        return STUDIES
-    context.user_data["studies"] = text
-    update.message.reply_text("3️⃣ Количество часов (0‑100):")
-    return HOURS
+
+    if step == Step.STUDIES:
+        if not text.isdigit() or not (0 <= int(text) <= 10):
+            update.message.reply_text("Пожалуйста, введите число от 0 до 10")
+            return
+        context.user_data["studies"] = text
+        ask_pioneer(chat_id, context)
+        context.user_data["step"] = Step.PIONEER
+        return
+
+    if step == Step.HOURS:
+        if not text.isdigit() or not (0 <= int(text) <= 100):
+            update.message.reply_text("Введите число от 0 до 100")
+            return
+        context.user_data["hours"] = text
+        ask_comment(chat_id, context)
+        context.user_data["step"] = Step.COMMENT
+        return
+
+    if step == Step.COMMENT:
+        context.user_data["comment"] = text
+        finish_report(update.effective_user, context, chat_id=chat_id)
+        return
 
 
-def hours_msg(update: Update, context: CallbackContext):
-    text = update.message.text.strip()
-    if not text.isdigit() or not (0 <= int(text) <= 100):
-        update.message.reply_text("Введите число от 0 до 100.")
-        return HOURS
-    context.user_data["hours"] = text
-    update.message.reply_text("4️⃣ Комментарий (или ""-"" если нет):")
-    return COMMENT
+# ------------- finishing -------------
+
+def finish_report(user, context: CallbackContext, *, chat_id: int):
+    data = context.user_data
+    report = (
+        f"{user.full_name} (@{user.username})\n\n"
+        f"Участие: {data.get('preaching', '-') }\n"
+        f"Изучения: {data.get('studies', '-') }\n"
+        f"Пионер: {data.get('pioneer', '-') }\n"
+        f"Часы: {data.get('hours', '-') }\n"
+        f"Комментарий: {data.get('comment', '-') }"
+    )
+
+    # Отправить в канал
+    context.bot.send_message(chat_id=CHANNEL_ID, text=report)
+
+    # Подтвердить пользователю
+    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.")
+
+    # Показать главное меню снова
+    send_main_menu(chat_id, context)
+    context.user_data.clear()
 
 
-def comment_msg(update: Update, context: CallbackContext):
-    context.user_data["comment"] = update.message.text.strip() or "‑"
-    send_report(update.effective_user, context)
-    update.message.reply_text("Спасибо! Отчёт отправлен.")
-    return ConversationHandler.END
-
-
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text("Отчёт отменён.")
-    return ConversationHandler.END
-
-
-def send_report(user, context: CallbackContext):
-    """Compose and forward the report to the channel in a thread to keep webhook fast."""
-
-    def _send():
-        ud = context.user_data
-        msg = (
-            f"📝 Отчёт от {user.full_name} (@{user.username})\n\n"
-            f"Участие в проповеди: {ud['preach']}\n"
-            f"Изучений: {ud['studies']}\n"
-            f"Часы: {ud['hours']}\n"
-            f"Комментарий: {ud['comment']}"
-        )
-        bot.send_message(chat_id=CHANNEL_ID, text=msg)
-
-    threading.Thread(target=_send).start()
-
-
-# ====== Register handlers ======
-conv = ConversationHandler(
-    entry_points=[CallbackQueryHandler(start_report_cb, pattern="^start_report$")],
-    states={
-        PREACH: [CallbackQueryHandler(preach_answer_cb, pattern="^preach_(yes|no)$")],
-        STUDIES: [MessageHandler(Filters.text & ~Filters.command, studies_msg)],
-        HOURS: [MessageHandler(Filters.text & ~Filters.command, hours_msg)],
-        COMMENT: [MessageHandler(Filters.text & ~Filters.command, comment_msg)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)],
-    allow_reentry=True,
-)
-
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(conv)
-
-# ====== Flask webhook ======
-app = Flask(__name__)
+# -------------- Flask webhook --------------
 
 @app.route(f"/{WEBHOOK_SECRET}", methods=["POST"])
 def webhook():
     update = telegram.Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
+    dp.process_update(update)
     return "ok"
+
+
+# -------------- Flask ping --------------
 
 @app.route("/ping")
 def ping():
     return "pong"
+
+
+# ------------ Register handlers ------------
+
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(CommandHandler("report", report_cmd))
+dp.add_handler(CallbackQueryHandler(button_handler))
+dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
 # Entry point for Render local testing (optional)
 if __name__ == "__main__":
