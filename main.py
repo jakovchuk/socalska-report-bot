@@ -70,7 +70,7 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
     bot.set_my_commands(
-        [("report", "Отправить отчёт")]
+        [("report", "📝 Отправить отчёт")]
     )
     send_main_menu(update.effective_chat.id, context)
 
@@ -108,6 +108,10 @@ def button_handler(update: Update, context: CallbackContext):
     # Studies step
     if step == Steps.STUDIES:
         context.user_data["studies"] = data
+
+        # echo back what user chose:
+        context.bot.send_message(chat_id=query.message.chat_id, text=f"{data}")
+
         ask_pioneer(query.message.chat_id, context)
         context.user_data["step"] = Steps.PIONEER
         return
@@ -135,7 +139,7 @@ def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=Non
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✔️ Да", callback_data="yes"),
+                InlineKeyboardButton("☑️ Да", callback_data="yes"),
                 InlineKeyboardButton("❌ Нет", callback_data="no"),
             ]
         ]
@@ -175,7 +179,7 @@ def ask_pioneer(chat_id: int, context: CallbackContext):
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✔️ Да", callback_data="yes"),
+                InlineKeyboardButton("☑️ Да", callback_data="yes"),
                 InlineKeyboardButton("❌ Нет", callback_data="no"),
             ]
         ]
