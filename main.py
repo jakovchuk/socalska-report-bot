@@ -127,18 +127,35 @@ def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=Non
             [InlineKeyboardButton("Да", callback_data="yes"), InlineKeyboardButton("Нет", callback_data="no")]
         ]
     )
+    text = "Участвовали ли вы в проповедническом служении?"
     if edit and msg:
-        msg.edit_text("Участвовали ли вы в проповедническом служении?", reply_markup=keyboard)
+        msg.edit_text(text, reply_markup=keyboard)
     else:
-        context.bot.send_message(chat_id, "Участвовали ли вы в проповедническом служении?", reply_markup=keyboard)
+        context.bot.send_message(chat_id, text, reply_markup=keyboard)
 
 
 def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
-    text = "Сколько библейских изучений? (0-10)"
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Нет", callback_data="-"),
+                InlineKeyboardButton("1", callback_data="1"),
+                InlineKeyboardButton("2", callback_data="2"),
+                InlineKeyboardButton("3", callback_data="3"),
+            ],
+            [
+                InlineKeyboardButton("4", callback_data="4"),
+                InlineKeyboardButton("5", callback_data="5"),
+                InlineKeyboardButton("6", callback_data="6"),
+                InlineKeyboardButton("7", callback_data="7"),
+            ]
+        ]
+    )
+    text = "Количество библейских изучений:"
     if edit and msg:
-        msg.edit_text(text)
+        msg.edit_text(text, reply_markup=keyboard)
     else:
-        context.bot.send_message(chat_id, text)
+        context.bot.send_message(chat_id, text, reply_markup=keyboard)
 
 
 def ask_pioneer(chat_id: int, context: CallbackContext):
@@ -151,7 +168,7 @@ def ask_pioneer(chat_id: int, context: CallbackContext):
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
-    text = "Количество часов (1-100)"
+    text = "Количество часов (1-100):"
     if edit and msg:
         msg.edit_text(text)
     else:
@@ -244,7 +261,7 @@ dp.add_handler(CommandHandler("report", report_cmd))
 dp.add_handler(CallbackQueryHandler(button_handler))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
-# Entry point for Render local testing (optional)
+# Entry point for Render local testing
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
