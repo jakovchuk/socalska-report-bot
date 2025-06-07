@@ -7,6 +7,8 @@ import telegram
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     Update,
 )
 from telegram.ext import (
@@ -38,7 +40,7 @@ app = Flask(__name__)
 dp = Dispatcher(bot, None, use_context=True)
 
 
-class Step(Enum):
+class Steps(Enum):
     NONE = auto()
     PREACHING = auto()
     STUDIES = auto()
@@ -80,7 +82,7 @@ def start(update: Update, context: CallbackContext):
 def report_cmd(update: Update, context: CallbackContext):
     """/report command - start the reporting flow (same as pressing the button)."""
     ask_preaching(update.effective_chat.id, context)
-    context.user_data["step"] = Step.PREACHING
+    context.user_data["step"] = Steps.PREACHING
 
 
 def button_handler(update: Update, context: CallbackContext):
@@ -88,32 +90,32 @@ def button_handler(update: Update, context: CallbackContext):
     query.answer()
 
     data = query.data
-    step = context.user_data.get("step", Step.NONE)
+    step = context.user_data.get("step", Steps.NONE)
 
     if data == "report":
         # Start flow
         ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data.clear()
-        context.user_data["step"] = Step.PREACHING
+        context.user_data["step"] = Steps.PREACHING
         return
 
-    if step == Step.PREACHING:
+    if step == Steps.PREACHING:
         context.user_data["preaching"] = "Да" if data == "yes" else "Нет"
         if data == "no":
             finish_report(update.effective_user, context, chat_id=query.message.chat_id)
             return
         # if "yes"
         ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
-        context.user_data["step"] = Step.STUDIES
+        context.user_data["step"] = Steps.STUDIES
         return
     
-    if step == Step.STUDIES:
+    if step == Steps.STUDIES:
         context.user_data["studies"] = data
         ask_pioneer(query.message.chat_id, context)
-        context.user_data["step"] = Step.PIONEER
+        context.user_data["step"] = Steps.PIONEER
         return
 
-    if step == Step.PIONEER:
+    if step == Steps.PIONEER:
         context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
         if data == "no":
             # отправить отчёт с прочерками для часов и комментария
@@ -121,7 +123,7 @@ def button_handler(update: Update, context: CallbackContext):
             return
         # If pioneer Yes – ask hours
         ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
-        context.user_data["step"] = Step.HOURS
+        context.user_data["step"] = Steps.HOURS
         return
 
 
@@ -182,12 +184,12 @@ def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
 
 
 def ask_comment(chat_id: int, context: CallbackContext):
-    keyboard = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("Пропустить", callback_data="-")]
-        ]
+    reply_markup = ReplyKeyboardMarkup(
+        [['Пропустить']],
+        one_time_keyboard=True,
+        resize_keyboard=True
     )
-    context.bot.send_message(chat_id, "Комментарий (любой текст):", reply_markup=keyboard)
+    context.bot.send_message(chat_id, "Комментарий (любой текст):", reply_markup=reply_markup)
 
 
 # ------------- message handlers -------------
@@ -201,17 +203,20 @@ def text_handler(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
 
-    if step == Step.HOURS:
+    if step == Steps.HOURS:
         if not text.isdigit() or not (1 <= int(text) <= 100):
             update.message.reply_text("Введите число от 1 до 100")
             return
         context.user_data["hours"] = text
         ask_comment(chat_id, context)
-        context.user_data["step"] = Step.COMMENT
+        context.user_data["step"] = Steps.COMMENT
         return
 
-    if step == Step.COMMENT:
-        context.user_data["comment"] = text
+    if step == Steps.COMMENT:
+        if text == 'Пропустить':
+            context.user_data['comment'] = '-'
+        else:
+            context.user_data['comment'] = text
         finish_report(update.effective_user, context, chat_id=chat_id)
         return
 
@@ -233,7 +238,7 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
     context.bot.send_message(chat_id=CHANNEL_ID, text=report)
 
     # Подтвердить пользователю
-    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.")
+    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.", reply_markup=ReplyKeyboardRemove())
 
     context.user_data.clear()
 
