@@ -106,6 +106,12 @@ def button_handler(update: Update, context: CallbackContext):
         ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Step.STUDIES
         return
+    
+    if step == Step.STUDIES:
+        context.user_data["studies"] = data
+        ask_pioneer(query.message.chat_id, context)
+        context.user_data["step"] = Step.PIONEER
+        return
 
     if step == Step.PIONEER:
         context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
@@ -138,16 +144,16 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Нет", callback_data="-"),
-                InlineKeyboardButton("1", callback_data="1"),
-                InlineKeyboardButton("2", callback_data="2"),
-                InlineKeyboardButton("3", callback_data="3"),
+                InlineKeyboardButton("Нет", callback_data=0),
+                InlineKeyboardButton("1", callback_data=1),
+                InlineKeyboardButton("2", callback_data=2),
+                InlineKeyboardButton("3", callback_data=3),
             ],
             [
-                InlineKeyboardButton("4", callback_data="4"),
-                InlineKeyboardButton("5", callback_data="5"),
-                InlineKeyboardButton("6", callback_data="6"),
-                InlineKeyboardButton("7", callback_data="7"),
+                InlineKeyboardButton("4", callback_data=4),
+                InlineKeyboardButton("5", callback_data=5),
+                InlineKeyboardButton("6", callback_data=6),
+                InlineKeyboardButton("7", callback_data=7),
             ]
         ]
     )
@@ -176,7 +182,12 @@ def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
 
 
 def ask_comment(chat_id: int, context: CallbackContext):
-    context.bot.send_message(chat_id, "Комментарий (любой текст, можно пропустить, отправив '-'):")
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Пропустить", callback_data="-")]
+        ]
+    )
+    context.bot.send_message(chat_id, "Комментарий (любой текст):", reply_markup=keyboard)
 
 
 # ------------- message handlers -------------
@@ -189,15 +200,6 @@ def text_handler(update: Update, context: CallbackContext):
 
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
-
-    if step == Step.STUDIES:
-        if not text.isdigit() or not (0 <= int(text) <= 10):
-            update.message.reply_text("Введите число от 0 до 10")
-            return
-        context.user_data["studies"] = text
-        ask_pioneer(chat_id, context)
-        context.user_data["step"] = Step.PIONEER
-        return
 
     if step == Step.HOURS:
         if not text.isdigit() or not (1 <= int(text) <= 100):
@@ -227,14 +229,12 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Комментарий: {data.get('comment', '-') }"
     )
 
-    # Отправить в канал
+    # Отправить отчет в канал
     context.bot.send_message(chat_id=CHANNEL_ID, text=report)
 
     # Подтвердить пользователю
     context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.")
 
-    # Показать главное меню снова
-    send_main_menu(chat_id, context)
     context.user_data.clear()
 
 
