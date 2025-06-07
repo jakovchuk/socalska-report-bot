@@ -1,6 +1,7 @@
 import os
 import logging
 from enum import Enum, auto
+from datetime import datetime
 
 from flask import Flask, request
 import telegram
@@ -37,6 +38,24 @@ app = Flask(__name__)
 
 dp = Dispatcher(bot, None, use_context=True)
 
+# Russian month names for report header
+RU_MONTHS = [None,
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+]
+
+# Helper: compute previous month name and year
+def get_report_period():
+    now = datetime.now()
+    # previous month logic
+    if now.month == 1:
+        year = now.year - 1
+        month = 12
+    else:
+        year = now.year
+        month = now.month - 1
+    month_name = RU_MONTHS[month]
+    return month_name, year
 
 class Steps(Enum):
     NONE = auto()
@@ -70,7 +89,7 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
     bot.set_my_commands(
-        [("report", "📝 Отправить отчёт")]
+        [("report", "Отправить отчёт")]
     )
     send_main_menu(update.effective_chat.id, context)
 
@@ -234,9 +253,12 @@ def text_handler(update: Update, context: CallbackContext):
 # ------------- finishing -------------
 
 def finish_report(user, context: CallbackContext, *, chat_id: int):
+    # Compute period
+    month_name, year = get_report_period()
+    header = f"Отчёт за {month_name} {year}\n\n"
+    user_info = f"от {user.full_name} (@{user.username})\n\n"
     data = context.user_data
     report = (
-        f"{user.full_name} (@{user.username})\n\n"
         f"Участие: {data.get('preaching', '-') }\n"
         f"Изучения: {data.get('studies', '-') }\n"
         f"Пионер: {data.get('pioneer', '-') }\n"
@@ -244,8 +266,8 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Комментарий: {data.get('comment', '-') }"
     )
 
-    context.bot.send_message(chat_id=CHANNEL_ID, text=report)
-    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.")
+    context.bot.send_message(chat_id=CHANNEL_ID, text=header + user_info + report)
+    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.\n\n" + header + report)
     context.user_data.clear()
 
 
