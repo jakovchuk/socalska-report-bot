@@ -7,8 +7,6 @@ import telegram
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     Update,
 )
 from telegram.ext import (
@@ -53,7 +51,6 @@ class Steps(Enum):
 # Helper functions
 # ---------------
 
-
 def send_main_menu(chat_id: int, context: CallbackContext):
     """Sends the persistent main menu with the inline button and ensures /report appears."""
     keyboard = InlineKeyboardMarkup(
@@ -69,7 +66,6 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 # -----------------
 # Conversation flow
 # -----------------
-
 
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
@@ -92,38 +88,44 @@ def button_handler(update: Update, context: CallbackContext):
     data = query.data
     step = context.user_data.get("step", Steps.NONE)
 
+    # Start flow via menu
     if data == "report":
-        # Start flow
         ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data.clear()
         context.user_data["step"] = Steps.PREACHING
         return
 
+    # Preaching step
     if step == Steps.PREACHING:
         context.user_data["preaching"] = "Да" if data == "yes" else "Нет"
         if data == "no":
             finish_report(update.effective_user, context, chat_id=query.message.chat_id)
             return
-        # if "yes"
         ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Steps.STUDIES
         return
-    
+
+    # Studies step
     if step == Steps.STUDIES:
         context.user_data["studies"] = data
         ask_pioneer(query.message.chat_id, context)
         context.user_data["step"] = Steps.PIONEER
         return
 
+    # Pioneer step
     if step == Steps.PIONEER:
         context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
         if data == "no":
-            # отправить отчёт с прочерками для часов и комментария
             finish_report(update.effective_user, context, chat_id=query.message.chat_id)
             return
-        # If pioneer Yes – ask hours
         ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Steps.HOURS
+        return
+
+    # Skip comment via inline button
+    if step == Steps.COMMENT and data == "skip_comment":
+        context.user_data['comment'] = '-'
+        finish_report(update.effective_user, context, chat_id=query.message.chat_id)
         return
 
 
@@ -132,7 +134,10 @@ def button_handler(update: Update, context: CallbackContext):
 def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
     keyboard = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("Да", callback_data="yes"), InlineKeyboardButton("Нет", callback_data="no")]
+            [
+                InlineKeyboardButton("✔️ Да", callback_data="yes"),
+                InlineKeyboardButton("❌ Нет", callback_data="no"),
+            ]
         ]
     )
     text = "Участвовали ли вы в проповедническом служении?"
@@ -146,7 +151,7 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Нет", callback_data=0),
+                InlineKeyboardButton("❌ Нет", callback_data=0),
                 InlineKeyboardButton("1", callback_data=1),
                 InlineKeyboardButton("2", callback_data=2),
                 InlineKeyboardButton("3", callback_data=3),
@@ -156,7 +161,7 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
                 InlineKeyboardButton("5", callback_data=5),
                 InlineKeyboardButton("6", callback_data=6),
                 InlineKeyboardButton("7", callback_data=7),
-            ]
+            ],
         ]
     )
     text = "Количество библейских изучений:"
@@ -169,7 +174,10 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
 def ask_pioneer(chat_id: int, context: CallbackContext):
     keyboard = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("Да", callback_data="yes"), InlineKeyboardButton("Нет", callback_data="no")]
+            [
+                InlineKeyboardButton("✔️ Да", callback_data="yes"),
+                InlineKeyboardButton("❌ Нет", callback_data="no"),
+            ]
         ]
     )
     context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
@@ -183,13 +191,15 @@ def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
         context.bot.send_message(chat_id, text)
 
 
-def ask_comment(chat_id: int, context: CallbackContext):
-    reply_markup = ReplyKeyboardMarkup(
-        [['Пропустить']],
-        one_time_keyboard=True,
-        resize_keyboard=True
+def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("Пропустить", callback_data="skip_comment")]]
     )
-    context.bot.send_message(chat_id, "Комментарий (любой текст):", reply_markup=reply_markup)
+    text = "Комментарий (любой текст):"
+    if edit and msg:
+        msg.edit_text(text, reply_markup=keyboard)
+    else:
+        context.bot.send_message(chat_id, text, reply_markup=keyboard)
 
 
 # ------------- message handlers -------------
@@ -197,7 +207,6 @@ def ask_comment(chat_id: int, context: CallbackContext):
 def text_handler(update: Update, context: CallbackContext):
     step = context.user_data.get("step")
     if not step:
-        # ignore stray messages
         return
 
     chat_id = update.effective_chat.id
@@ -213,10 +222,7 @@ def text_handler(update: Update, context: CallbackContext):
         return
 
     if step == Steps.COMMENT:
-        if text == 'Пропустить':
-            context.user_data['comment'] = '-'
-        else:
-            context.user_data['comment'] = text
+        context.user_data['comment'] = text
         finish_report(update.effective_user, context, chat_id=chat_id)
         return
 
@@ -234,12 +240,8 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Комментарий: {data.get('comment', '-') }"
     )
 
-    # Отправить отчет в канал
     context.bot.send_message(chat_id=CHANNEL_ID, text=report)
-
-    # Подтвердить пользователю
-    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.", reply_markup=ReplyKeyboardRemove())
-
+    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.")
     context.user_data.clear()
 
 
@@ -266,7 +268,6 @@ dp.add_handler(CommandHandler("report", report_cmd))
 dp.add_handler(CallbackQueryHandler(button_handler))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
-# Entry point for Render local testing
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
