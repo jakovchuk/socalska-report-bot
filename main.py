@@ -122,6 +122,7 @@ def button_handler(update: Update, context: CallbackContext):
             if context.user_data["pioneer"] == "Да":
                 ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
                 context.user_data["step"] = Steps.HOURS
+                return
             ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
             context.user_data["step"] = Steps.PIONEER
         return
@@ -296,18 +297,33 @@ def text_handler(update: Update, context: CallbackContext):
 
 # ------------- finishing -------------
 
+def build_report(user_data):
+    keys = ['preaching', 'studies', 'pioneer', 'hours', 'comment']
+    labels = ['Участие',   'Изучения', 'Пионер', 'Часы',  'Комментарий']
+    values = {k: user_data.get(k, '-') for k in keys}
+    
+    if values['preaching'] == 'Нет':
+        blank_keys = ['studies', 'pioneer', 'hours', 'comment']
+    elif values['pioneer'] == 'Нет':
+        blank_keys = ['hours']
+    else:
+        blank_keys = []
+    
+    for k in blank_keys:
+        values[k] = '-'
+    
+    lines = [
+        f"{label}: {values[key]}"
+        for label, key in zip(labels, keys)
+    ]
+    return "\n".join(lines)
+
+
 def finish_report(user, context: CallbackContext, *, chat_id: int):
     # Compute period
     month_name, year = get_report_period()
     # Prepare report data
-    data = context.user_data
-    report = (
-        f"Участие: {data.get('preaching', '-') }\n"
-        f"Изучения: {data.get('studies', '-') }\n"
-        f"Пионер: {data.get('pioneer', '-') }\n"
-        f"Часы: {data.get('hours', '-') }\n"
-        f"Комментарий: {data.get('comment', '-') }"
-    )
+    report = build_report(context.user_data)
 
     # Send report to channel
     if user.username is None:
