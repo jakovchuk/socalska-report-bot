@@ -129,7 +129,7 @@ def button_handler(update: Update, context: CallbackContext):
         context.user_data["studies"] = data
 
         # echo back what user chose:
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"{data}")
+        # context.bot.send_message(chat_id=query.message.chat_id, text=f"{data}")
 
         ask_pioneer(query.message.chat_id, context)
         context.user_data["step"] = Steps.PIONEER
@@ -165,9 +165,10 @@ def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=Non
     )
     text = "Участвовали ли вы в проповедническом служении?"
     if edit and msg:
-        msg.edit_text(text, reply_markup=keyboard)
+        sent = msg.edit_text(text, reply_markup=keyboard)
     else:
-        context.bot.send_message(chat_id, text, reply_markup=keyboard)
+        sent = context.bot.send_message(chat_id, text, reply_markup=keyboard)
+    context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
@@ -189,9 +190,10 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     )
     text = "Количество библейских изучений:"
     if edit and msg:
-        msg.edit_text(text, reply_markup=keyboard)
+        sent = msg.edit_text(text, reply_markup=keyboard)
     else:
-        context.bot.send_message(chat_id, text, reply_markup=keyboard)
+        sent = context.bot.send_message(chat_id, text, reply_markup=keyboard)
+    context.user_data.setdefault("to_delete", []).append(sent.message_id)    
 
 
 def ask_pioneer(chat_id: int, context: CallbackContext):
@@ -203,15 +205,17 @@ def ask_pioneer(chat_id: int, context: CallbackContext):
             ]
         ]
     )
-    context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
+    sent = context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
+    context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
     text = "Количество часов (1-100):"
     if edit and msg:
-        msg.edit_text(text)
+        sent = msg.edit_text(text)
     else:
-        context.bot.send_message(chat_id, text)
+        sent = context.bot.send_message(chat_id, text)
+    context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
@@ -220,9 +224,10 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     )
     text = "Комментарий (любой текст):"
     if edit and msg:
-        msg.edit_text(text, reply_markup=keyboard)
+        sent = msg.edit_text(text, reply_markup=keyboard)
     else:
-        context.bot.send_message(chat_id, text, reply_markup=keyboard)
+        sent = context.bot.send_message(chat_id, text, reply_markup=keyboard)
+    context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 # ------------- message handlers -------------
@@ -234,6 +239,7 @@ def text_handler(update: Update, context: CallbackContext):
 
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
+    context.user_data.setdefault("to_delete", []).append(update.message.message_id)
 
     if step == Steps.HOURS:
         if not text.isdigit() or not (1 <= int(text) <= 100):
@@ -285,6 +291,14 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"{report}"
     )
     context.bot.send_message(chat_id, confirmation_text)
+
+    # clean up the back-and-forth
+    for msg_id in context.user_data.get("to_delete", []):
+        try:
+            context.bot.delete_message(chat_id, msg_id)
+        except telegram.error.BadRequest:
+            # e.g. message too old or missing permissions
+            pass
 
     # Clear user data
     context.user_data.clear()
