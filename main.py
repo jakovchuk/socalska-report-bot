@@ -146,11 +146,7 @@ def button_handler(update: Update, context: CallbackContext):
     # Studies step
     if step == Steps.STUDIES:
         context.user_data["studies"] = data
-
-        # echo back what user chose:
-        # context.bot.send_message(chat_id=query.message.chat_id, text=f"{data}")
-
-        ask_pioneer(query.message.chat_id, context)
+        ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Steps.PIONEER
         return
 
@@ -261,11 +257,9 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     keyboard = InlineKeyboardMarkup(
         [
             [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
                 InlineKeyboardButton("Пропустить", callback_data="skip_comment")
             ],
-            [
-                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
-            ]
         ]
     )
     text = "Комментарий (введите любой текст в строке ниже или нажмите Пропустить):"
