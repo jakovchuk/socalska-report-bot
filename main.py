@@ -171,18 +171,15 @@ def button_handler(update: Update, context: CallbackContext):
 # ---------- questions helpers ------------
 
 def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Участвовали ли вы в проповедническом служении?"
     keyboard = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton("☑️ Да", callback_data="yes"),
                 InlineKeyboardButton("❌ Нет", callback_data="no"),
-            ],
-            [
-                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
             ]
         ]
     )
-    text = "Участвовали ли вы в проповедническом служении?"
     if edit and msg:
         sent = msg.edit_text(text, reply_markup=keyboard)
     else:
@@ -191,6 +188,7 @@ def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=Non
 
 
 def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Количество библейских изучений:"
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -210,7 +208,6 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
             ]
         ]
     )
-    text = "Количество библейских изучений:"
     if edit and msg:
         sent = msg.edit_text(text, reply_markup=keyboard)
     else:
@@ -219,6 +216,7 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
 
 
 def ask_pioneer(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Пионер (подсобный пионер)?"
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -231,13 +229,14 @@ def ask_pioneer(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
         ]
     )
     if edit and msg:
-        sent = msg.edit_text("Пионер (подсобный пионер)?", reply_markup=keyboard)
+        sent = msg.edit_text(text, reply_markup=keyboard)
     else:
-        sent = context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
+        sent = context.bot.send_message(chat_id, text, reply_markup=keyboard)
     context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Количество часов (введите число от 1 до 100 в строке ниже):"
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -245,7 +244,6 @@ def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
             ]
         ]
     )
-    text = "Количество часов (введите число от 1 до 100 в строке ниже):"
     if edit and msg:
         sent = msg.edit_text(text, reply_markup=keyboard)
     else:
@@ -254,6 +252,7 @@ def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
 
 
 def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    text = "Комментарий (введите любой текст в строке ниже или нажмите Пропустить):"
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -262,7 +261,6 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
             ],
         ]
     )
-    text = "Комментарий (введите любой текст в строке ниже или нажмите Пропустить):"
     if edit and msg:
         sent = msg.edit_text(text, reply_markup=keyboard)
     else:
@@ -367,6 +365,7 @@ dp.add_handler(CommandHandler("report", report_cmd))
 dp.add_handler(CallbackQueryHandler(button_handler))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
+# -------------- Run application --------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
