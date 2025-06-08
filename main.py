@@ -266,8 +266,17 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Комментарий: {data.get('comment', '-') }"
     )
 
+    # Send report to channel
     context.bot.send_message(chat_id=CHANNEL_ID, text=header + user_info + report)
-    context.bot.send_message(chat_id, "Спасибо! Ваш отчёт отправлен.\n\n" + header + report)
+
+    # Send confirmation to user
+    confirmation_text = (
+        "Спасибо!\n\n"
+        f"Ваш отчёт за {month_name} {year} отправлен.\n\n"
+        f"{report}"
+    )
+
+    context.bot.send_message(chat_id, confirmation_text)
     context.user_data.clear()
 
 
