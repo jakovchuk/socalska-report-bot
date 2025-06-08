@@ -139,7 +139,8 @@ def button_handler(update: Update, context: CallbackContext):
     if step == Steps.PIONEER:
         context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
         if data == "no":
-            finish_report(update.effective_user, context, chat_id=query.message.chat_id)
+            ask_comment(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.COMMENT
             return
         ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Steps.HOURS
@@ -210,7 +211,7 @@ def ask_pioneer(chat_id: int, context: CallbackContext):
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
-    text = "Количество часов (1-100):"
+    text = "Количество часов (введите число от 1 до 100 в строке ниже):"
     if edit and msg:
         sent = msg.edit_text(text)
     else:
@@ -222,7 +223,7 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("Пропустить", callback_data="skip_comment")]]
     )
-    text = "Комментарий (любой текст):"
+    text = "Комментарий (введите любой текст в строке ниже или нажмите Пропустить):"
     if edit and msg:
         sent = msg.edit_text(text, reply_markup=keyboard)
     else:
