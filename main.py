@@ -255,8 +255,7 @@ def text_handler(update: Update, context: CallbackContext):
 def finish_report(user, context: CallbackContext, *, chat_id: int):
     # Compute period
     month_name, year = get_report_period()
-    header = f"Отчёт за {month_name} {year}\n\n"
-    user_info = f"от {user.full_name} (@{user.username})\n\n"
+    # Prepare report data
     data = context.user_data
     report = (
         f"Участие: {data.get('preaching', '-') }\n"
@@ -267,7 +266,12 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
     )
 
     # Send report to channel
-    context.bot.send_message(chat_id=CHANNEL_ID, text=header + user_info + report)
+    report_text = (
+        f"Отчёт за {month_name} {year}\n"
+        f"от {user.full_name} (@{user.username})\n\n"
+        f"{report}"
+    )
+    context.bot.send_message(chat_id=CHANNEL_ID, text=report_text)
 
     # Send confirmation to user
     confirmation_text = (
@@ -275,8 +279,9 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Ваш отчёт за {month_name} {year} отправлен.\n\n"
         f"{report}"
     )
-
     context.bot.send_message(chat_id, confirmation_text)
+
+    # Clear user data
     context.user_data.clear()
 
 
