@@ -107,6 +107,25 @@ def button_handler(update: Update, context: CallbackContext):
     data = query.data
     step = context.user_data.get("step", Steps.NONE)
 
+    # Back navigation
+    if data == "back":
+        if step == Steps.STUDIES:
+            ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.PREACHING
+        elif step == Steps.PIONEER:
+            ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.STUDIES
+        elif step == Steps.HOURS:
+            ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.PIONEER
+        elif step == Steps.COMMENT:
+            if context.user_data["pioneer"] == "Да":
+                ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
+                context.user_data["step"] = Steps.HOURS
+            ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.PIONEER
+        return
+
     # Start flow via menu
     if data == "report":
         ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
@@ -161,6 +180,9 @@ def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=Non
             [
                 InlineKeyboardButton("☑️ Да", callback_data="yes"),
                 InlineKeyboardButton("❌ Нет", callback_data="no"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
             ]
         ]
     )
@@ -187,6 +209,9 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
                 InlineKeyboardButton("6", callback_data=6),
                 InlineKeyboardButton("7", callback_data=7),
             ],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
+            ]
         ]
     )
     text = "Количество библейских изучений:"
@@ -197,31 +222,51 @@ def ask_studies(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
     context.user_data.setdefault("to_delete", []).append(sent.message_id)    
 
 
-def ask_pioneer(chat_id: int, context: CallbackContext):
+def ask_pioneer(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
     keyboard = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton("☑️ Да", callback_data="yes"),
                 InlineKeyboardButton("❌ Нет", callback_data="no"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
             ]
         ]
     )
-    sent = context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
+    if edit and msg:
+        sent = msg.edit_text("Пионер (подсобный пионер)?", reply_markup=keyboard)
+    else:
+        sent = context.bot.send_message(chat_id, "Пионер (подсобный пионер)?", reply_markup=keyboard)
     context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_hours(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
+            ]
+        ]
+    )
     text = "Количество часов (введите число от 1 до 100 в строке ниже):"
     if edit and msg:
-        sent = msg.edit_text(text)
+        sent = msg.edit_text(text, reply_markup=keyboard)
     else:
-        sent = context.bot.send_message(chat_id, text)
+        sent = context.bot.send_message(chat_id, text, reply_markup=keyboard)
     context.user_data.setdefault("to_delete", []).append(sent.message_id)
 
 
 def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("Пропустить", callback_data="skip_comment")]]
+        [
+            [
+                InlineKeyboardButton("Пропустить", callback_data="skip_comment")
+            ],
+            [
+                InlineKeyboardButton("⬅️ Назад", callback_data="back"),
+            ]
+        ]
     )
     text = "Комментарий (введите любой текст в строке ниже или нажмите Пропустить):"
     if edit and msg:
