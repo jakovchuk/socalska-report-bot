@@ -266,9 +266,14 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
     )
 
     # Send report to channel
+    if user.username is None:
+        user_name = ""
+    else:
+        user_name = "(@" + user.username.strip('@') + ")"
+
     report_text = (
         f"Отчёт за {month_name} {year}\n"
-        f"от {user.full_name} (@{user.username})\n\n"
+        f"от {user.full_name} {user_name}\n\n"
         f"{report}"
     )
     context.bot.send_message(chat_id=CHANNEL_ID, text=report_text)
