@@ -116,7 +116,7 @@ def start(update: Update, context: CallbackContext):
 
     # schedule reminder once per chat
     if not context.chat_data.get("reminder_scheduled"):
-        context.job_queue.run_daily(
+        job_queue.run_daily(
             callback=daily_check,
             time=dtime(hour=9, minute=0),  # Kyiv time assumed server TZ
             context=chat_id
