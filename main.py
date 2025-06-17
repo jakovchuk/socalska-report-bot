@@ -37,12 +37,12 @@ logging.basicConfig(level=logging.INFO)
 bot = telegram.Bot(BOT_TOKEN)
 app = Flask(__name__)
 
-dp = Dispatcher(bot, None, use_context=True)
-
-# Set up JobQueue for monthly reminders
-ojq = JobQueue()
-ojq.set_dispatcher(dp)
-ojq.start()
+# Configure JobQueue before Dispatcher so context.job_queue is available
+job_queue = JobQueue()
+# Create Dispatcher with job_queue
+dp = Dispatcher(bot, None, use_context=True, job_queue=job_queue)
+# Start the JobQueue
+job_queue.start()
 
 # Russian month names for report header
 RU_MONTHS = [None,
