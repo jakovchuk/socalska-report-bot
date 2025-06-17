@@ -37,12 +37,12 @@ logging.basicConfig(level=logging.INFO)
 bot = telegram.Bot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Configure JobQueue before Dispatcher so context.job_queue is available
-job_queue = JobQueue()
-# Create Dispatcher with job_queue
-dp = Dispatcher(bot, None, use_context=True, job_queue=job_queue)
-# Start the JobQueue
-job_queue.start()
+dp = Dispatcher(bot, None, use_context=True)  # ← ① create dispatcher first
+
+job_queue = JobQueue()                        # ← ② create JobQueue
+job_queue.set_dispatcher(dp)                  # ← ③ attach it
+dp.job_queue = job_queue                      #    (so context.job_queue isn’t None)
+job_queue.start()                             # ← ④ start it
 
 class Steps(Enum):
     NONE = auto()
@@ -78,14 +78,14 @@ def ensure_reminder(update, context):
 
 # Reminder callbacks
 def monthly_reminder(context: CallbackContext):
-    month_name, year = get_report_period()
+    month, year = get_report_period()
     chat_id = context.job.context
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("📝 Отправить отчёт", callback_data="report")]]
     )
     context.bot.send_message(
         chat_id=chat_id,
-        text=f"Не забудьте сдать отчёт за {month_name} {year}!",
+        text=f"Не забудьте сдать отчёт за {month} {year}!",
         reply_markup=keyboard,
     )
 
@@ -117,7 +117,6 @@ def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
     bot.set_my_commands([("report", "Отправить отчёт")])
     send_main_menu(update.effective_chat.id, context)
-    logging.info(f"{context.job_queue}")
     # schedule reminder
     ensure_reminder(update, context)
 
@@ -354,7 +353,7 @@ def build_report(user_data):
 
 
 def finish_report(user, context: CallbackContext, *, chat_id: int):
-    month_name, year = get_report_period()
+    month, year = get_report_period()
     # Prepare report data
     report = build_report(context.user_data)
 
@@ -365,7 +364,7 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         user_name = "(@" + user.username.strip('@') + ")"
 
     report_text = (
-        f"Отчёт за {month_name} {year}\n"
+        f"Отчёт за {month} {year}\n"
         f"от {user.full_name} {user_name}\n\n"
         f"{report}"
     )
@@ -374,7 +373,7 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
     # Send confirmation to user
     confirmation_text = (
         "Спасибо!\n\n"
-        f"Ваш отчёт за {month_name} {year} отправлен.\n\n"
+        f"Ваш отчёт за {month} {year} отправлен.\n\n"
         f"{report}"
     )
     context.bot.send_message(chat_id, confirmation_text)
