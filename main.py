@@ -117,6 +117,7 @@ def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
     bot.set_my_commands([("report", "Отправить отчёт")])
     send_main_menu(update.effective_chat.id, context)
+    logging.info(f"{context.job_queue}")
     # schedule reminder
     ensure_reminder(update, context)
 
