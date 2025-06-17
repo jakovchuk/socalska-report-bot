@@ -44,25 +44,6 @@ dp = Dispatcher(bot, None, use_context=True, job_queue=job_queue)
 # Start the JobQueue
 job_queue.start()
 
-# Russian month names for report header
-RU_MONTHS = [None,
-    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
-]
-
-# Helper: compute previous month name and year
-def get_report_period():
-    now = datetime.now()
-    # previous month logic
-    if now.month == 1:
-        year = now.year - 1
-        month = 12
-    else:
-        year = now.year
-        month = now.month - 1
-    month_name = RU_MONTHS[month]
-    return month_name, year
-
 class Steps(Enum):
     NONE = auto()
     PREACHING = auto()
@@ -70,6 +51,30 @@ class Steps(Enum):
     PIONEER = auto()
     HOURS = auto()
     COMMENT = auto()
+
+# Russian month names for report header
+RU_MONTHS = [None,
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+]
+
+# Helper: previous month and year
+def get_report_period():
+    now = datetime.now()
+    if now.month == 1:
+        return RU_MONTHS[12], now.year - 1
+    return RU_MONTHS[now.month - 1], now.year
+
+# Schedule reminder for a chat if not already
+def ensure_reminder(update, context):
+    chat_id = update.effective_chat.id
+    if not context.chat_data.get("reminder_scheduled"):
+        context.job_queue.run_daily(
+            callback=daily_check,
+            time=dtime(hour=9, minute=0),  # Kyiv time
+            context=chat_id
+        )
+        context.chat_data["reminder_scheduled"] = True
 
 # Reminder callbacks
 def monthly_reminder(context: CallbackContext):
@@ -110,22 +115,16 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
-    chat_id = update.effective_chat.id
     bot.set_my_commands([("report", "Отправить отчёт")])
     send_main_menu(update.effective_chat.id, context)
-
-    # schedule reminder once per chat
-    if not context.chat_data.get("reminder_scheduled"):
-        job_queue.run_daily(
-            callback=daily_check,
-            time=dtime(hour=9, minute=0),  # Kyiv time assumed server TZ
-            context=chat_id
-        )
-        context.chat_data["reminder_scheduled"] = True
+    # schedule reminder
+    ensure_reminder(update, context)
 
 
 def report_cmd(update: Update, context: CallbackContext):
     """/report command - start the reporting flow (same as pressing the button)."""
+    # schedule reminder if missed
+    ensure_reminder(update, context)
     ask_preaching(update.effective_chat.id, context)
     context.user_data["step"] = Steps.PREACHING
 
@@ -144,6 +143,7 @@ def button_handler(update: Update, context: CallbackContext):
 
     # Start flow via menu
     if data == "report":
+        ensure_reminder(update, context)
         ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data.clear()
         context.user_data["step"] = Steps.PREACHING
