@@ -1,7 +1,7 @@
 import os
 import logging
 from enum import Enum, auto
-from datetime import datetime
+from datetime import datetime, time as dtime
 
 from flask import Flask, request
 import telegram
@@ -17,6 +17,7 @@ from telegram.ext import (
     Filters,
     CallbackContext,
     Dispatcher,
+    JobQueue,
 )
 
 # =====================
@@ -37,6 +38,11 @@ bot = telegram.Bot(BOT_TOKEN)
 app = Flask(__name__)
 
 dp = Dispatcher(bot, None, use_context=True)
+
+# Set up JobQueue for monthly reminders
+ojq = JobQueue()
+ojq.set_dispatcher(dp)
+ojq.start()
 
 # Russian month names for report header
 RU_MONTHS = [None,
@@ -65,6 +71,22 @@ class Steps(Enum):
     HOURS = auto()
     COMMENT = auto()
 
+# Reminder callbacks
+def monthly_reminder(context: CallbackContext):
+    month_name, year = get_report_period()
+    chat_id = context.job.context
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📝 Отправить отчёт", callback_data="report")]]
+    )
+    context.bot.send_message(
+        chat_id=chat_id,
+        text=f"Не забудьте сдать отчёт за {month_name} {year}!",
+        reply_markup=keyboard,
+    )
+
+def daily_check(context: CallbackContext):
+    if datetime.now().day == 1:
+        monthly_reminder(context)
 
 # ---------------
 # Helper functions
@@ -88,10 +110,18 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
-    bot.set_my_commands(
-        [("report", "Отправить отчёт")]
-    )
+    chat_id = update.effective_chat.id
+    bot.set_my_commands([("report", "Отправить отчёт")])
     send_main_menu(update.effective_chat.id, context)
+
+    # schedule reminder once per chat
+    if not context.chat_data.get("reminder_scheduled"):
+        context.job_queue.run_daily(
+            callback=daily_check,
+            time=dtime(hour=9, minute=0),  # Kyiv time assumed server TZ
+            context=chat_id
+        )
+        context.chat_data["reminder_scheduled"] = True
 
 
 def report_cmd(update: Update, context: CallbackContext):
@@ -109,22 +139,7 @@ def button_handler(update: Update, context: CallbackContext):
 
     # Back navigation
     if data == "back":
-        if step == Steps.STUDIES:
-            ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
-            context.user_data["step"] = Steps.PREACHING
-        elif step == Steps.PIONEER:
-            ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
-            context.user_data["step"] = Steps.STUDIES
-        elif step == Steps.HOURS:
-            ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
-            context.user_data["step"] = Steps.PIONEER
-        elif step == Steps.COMMENT:
-            if context.user_data["pioneer"] == "Да":
-                ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
-                context.user_data["step"] = Steps.HOURS
-                return
-            ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
-            context.user_data["step"] = Steps.PIONEER
+        _go_back(step, query, context)
         return
 
     # Start flow via menu
@@ -134,7 +149,7 @@ def button_handler(update: Update, context: CallbackContext):
         context.user_data["step"] = Steps.PREACHING
         return
 
-    # Preaching step
+    # PREACHING
     if step == Steps.PREACHING:
         context.user_data["preaching"] = "Да" if data == "yes" else "Нет"
         if data == "no":
@@ -144,14 +159,14 @@ def button_handler(update: Update, context: CallbackContext):
         context.user_data["step"] = Steps.STUDIES
         return
 
-    # Studies step
+    # STUDIES
     if step == Steps.STUDIES:
         context.user_data["studies"] = data
         ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
         context.user_data["step"] = Steps.PIONEER
         return
 
-    # Pioneer step
+    # PIONEER
     if step == Steps.PIONEER:
         context.user_data["pioneer"] = "Да" if data == "yes" else "Нет"
         if data == "no":
@@ -162,12 +177,30 @@ def button_handler(update: Update, context: CallbackContext):
         context.user_data["step"] = Steps.HOURS
         return
 
-    # Skip comment via inline button
+    # COMMENT skip
     if step == Steps.COMMENT and data == "skip_comment":
         context.user_data['comment'] = '-'
         finish_report(update.effective_user, context, chat_id=query.message.chat_id)
         return
 
+# ---------- navigation helper ------------
+def _go_back(step, query, context):
+    if step == Steps.STUDIES:
+        ask_preaching(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Steps.PREACHING
+    elif step == Steps.PIONEER:
+        ask_studies(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Steps.STUDIES
+    elif step == Steps.HOURS:
+        ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Steps.PIONEER
+    elif step == Steps.COMMENT:
+        if context.user_data["pioneer"] == "Да":
+            ask_hours(query.message.chat_id, context, edit=True, msg=query.message)
+            context.user_data["step"] = Steps.HOURS
+            return
+        ask_pioneer(query.message.chat_id, context, edit=True, msg=query.message)
+        context.user_data["step"] = Steps.PIONEER
 
 # ---------- questions helpers ------------
 
@@ -320,7 +353,6 @@ def build_report(user_data):
 
 
 def finish_report(user, context: CallbackContext, *, chat_id: int):
-    # Compute period
     month_name, year = get_report_period()
     # Prepare report data
     report = build_report(context.user_data)
@@ -382,6 +414,7 @@ dp.add_handler(CallbackQueryHandler(button_handler))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
 # -------------- Run application --------------
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
