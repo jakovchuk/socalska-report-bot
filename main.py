@@ -2,6 +2,7 @@ import os
 import logging
 from enum import Enum, auto
 from datetime import datetime, time as dtime
+from zoneinfo import ZoneInfo
 
 from flask import Flask, request
 import telegram
@@ -60,7 +61,7 @@ RU_MONTHS = [None,
 
 # Helper: previous month and year
 def get_report_period():
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
     if now.month == 1:
         return RU_MONTHS[12], now.year - 1
     return RU_MONTHS[now.month - 1], now.year
@@ -90,7 +91,7 @@ def monthly_reminder(context: CallbackContext):
     )
 
 def daily_check(context: CallbackContext):
-    if datetime.now().day == 1:
+    if datetime.now(ZoneInfo("Europe/Kyiv")).day == 1:
         monthly_reminder(context)
 
 # ---------------
