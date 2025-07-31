@@ -62,9 +62,20 @@ RU_MONTHS = [None,
 # Helper: previous month and year
 def get_report_period():
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    if now.month == 1:
-        return RU_MONTHS[12], now.year - 1
-    return RU_MONTHS[now.month - 1], now.year
+    # days 1–24: report on previous month
+    if now.day <= 24:
+        if now.month == 1:
+            report_month = 12
+            report_year = now.year - 1
+        else:
+            report_month = now.month - 1
+            report_year = now.year
+    # days 25–31: report on current month
+    else:
+        report_month = now.month
+        report_year = now.year
+
+    return RU_MONTHS[report_month], report_year
 
 # Schedule reminder for a chat if not already
 def ensure_reminder(update, context):
