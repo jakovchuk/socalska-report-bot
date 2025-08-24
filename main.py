@@ -10,6 +10,9 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    ForceReply,
 )
 from telegram.ext import (
     CommandHandler,
@@ -20,6 +23,8 @@ from telegram.ext import (
     Dispatcher,
     JobQueue,
 )
+
+IDLE_BUTTON_LABEL = "📝 Отправить отчёт"
 
 # =====================
 # ENVIRONMENT VARIABLES
@@ -109,6 +114,27 @@ def daily_check(context: CallbackContext):
 # Helper functions
 # ---------------
 
+def show_idle_keyboard(chat_id: int, context: CallbackContext):
+    """Show a one-button ReplyKeyboard while the bot is idle."""
+    kb = ReplyKeyboardMarkup(
+        [[IDLE_BUTTON_LABEL]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
+    )
+    sent = context.bot.send_message(
+        chat_id,
+        "Готово! Чтобы начать новый отчёт, нажмите кнопку ниже:",
+        reply_markup=kb,
+    )
+    # track for cleanup if you like
+    context.chat_data["idle_menu_msg_id"] = sent.message_id
+
+def hide_reply_keyboard(chat_id: int, context: CallbackContext, text="Начинаем новый отчёт…"):
+    """Remove the ReplyKeyboard before switching to inline flow."""
+    rm = context.bot.send_message(chat_id, text, reply_markup=ReplyKeyboardRemove())
+    context.user_data.setdefault("to_delete", []).append(rm.message_id)
+
 def send_main_menu(chat_id: int, context: CallbackContext):
     """Sends the persistent main menu with the inline button and ensures /report appears."""
     keyboard = InlineKeyboardMarkup(
@@ -128,18 +154,32 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 def start(update: Update, context: CallbackContext):
     """/start handler - show menu and register bot commands."""
     bot.set_my_commands([("report", "Отправить отчёт")])
-    send_main_menu(update.effective_chat.id, context)
-    # schedule reminder
     ensure_reminder(update, context)
+    # Show idle reply keyboard (instead of inline menu)
+    show_idle_keyboard(update.effective_chat.id, context)
 
+def report_from_idle_button(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    ensure_reminder(update, context)  # keep your scheduling
+    hide_reply_keyboard(chat_id, context)  # remove the idle keyboard
+    ask_preaching(chat_id, context)        # continue with your existing inline flow
+    context.user_data.clear()
+    context.user_data["step"] = Steps.PREACHING
 
 def report_cmd(update: Update, context: CallbackContext):
     """/report command - start the reporting flow (same as pressing the button)."""
     # schedule reminder if missed
     ensure_reminder(update, context)
+    hide_reply_keyboard(update.effective_chat.id, context)
     ask_preaching(update.effective_chat.id, context)
     context.user_data["step"] = Steps.PREACHING
 
+def _delete_after(context: CallbackContext):
+    chat_id, msg_id = context.job.context
+    try:
+        context.bot.delete_message(chat_id, msg_id)
+    except telegram.error.BadRequest:
+        pass
 
 def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -318,13 +358,21 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
 
 def text_handler(update: Update, context: CallbackContext):
     step = context.user_data.get("step")
-    if not step:
-        return
-
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
     context.user_data.setdefault("to_delete", []).append(update.message.message_id)
 
+    # IDLE: no active step — redirect to the idle button
+    if not step or step == Steps.NONE:
+        warn = context.bot.send_message(
+            chat_id,
+            f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
+        )
+        context.job_queue.run_once(_delete_after, 4, context=(chat_id, warn.message_id))
+        show_idle_keyboard(chat_id, context)
+        return
+
+    # Your existing HOURS / COMMENT logic (unchanged)
     if step == Steps.HOURS:
         if not text.isdigit() or not (1 <= int(text) <= 100):
             update.message.reply_text("Введите число от 1 до 100")
@@ -401,6 +449,9 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
     # Clear user data
     context.user_data.clear()
 
+    # Return to idle state with the ReplyKeyboard visible
+    show_idle_keyboard(chat_id, context)
+
 
 # -------------- Flask webhook --------------
 
@@ -423,6 +474,7 @@ def ping():
 dp.add_handler(CommandHandler("start", start))
 dp.add_handler(CommandHandler("report", report_cmd))
 dp.add_handler(CallbackQueryHandler(button_handler))
+dp.add_handler(MessageHandler(Filters.regex(rf"^{IDLE_BUTTON_LABEL}$"), report_from_idle_button))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
 
 # -------------- Run application --------------
