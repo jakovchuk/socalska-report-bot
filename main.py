@@ -116,9 +116,6 @@ def daily_check(context: CallbackContext):
 
 def show_idle_keyboard(chat_id: int, context: CallbackContext):
     """Show idle ReplyKeyboard without any visible text bubble."""
-    if context.chat_data.get("idle_keyboard_on"):
-        return
-
     kb = ReplyKeyboardMarkup(
         [[IDLE_BUTTON_LABEL]],
         resize_keyboard=True,
@@ -136,8 +133,6 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
 
     # Delete the message shortly after; keyboard stays visible
     context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, msg.message_id))
-
-    context.chat_data["idle_keyboard_on"] = True
     context.chat_data["idle_menu_msg_id"] = msg.message_id
 
 def hide_reply_keyboard(chat_id: int, context: CallbackContext):
