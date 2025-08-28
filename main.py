@@ -25,6 +25,7 @@ from telegram.ext import (
 )
 
 IDLE_BUTTON_LABEL = "📝 Отправить отчёт"
+INVISIBLE = "\u2063"
 
 # =====================
 # ENVIRONMENT VARIABLES
@@ -129,7 +130,7 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
     # Send zero-width space so the message is “empty”
     msg = context.bot.send_message(
         chat_id,
-        "\u200b",                       # no visible text
+        INVISIBLE,                       # no visible text
         reply_markup=kb,
         disable_notification=True
     )
@@ -140,7 +141,7 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
 def hide_reply_keyboard(chat_id: int, context: CallbackContext):
     """Silently remove the ReplyKeyboard and clean old idle bubble."""
     # remove keyboard with an invisible message (delete that one)
-    rm = context.bot.send_message(chat_id, "\u200b", reply_markup=ReplyKeyboardRemove())
+    rm = context.bot.send_message(chat_id, INVISIBLE, reply_markup=ReplyKeyboardRemove())
     context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, rm.message_id))
 
     # optionally delete the previous idle bubble too
@@ -398,13 +399,12 @@ def text_handler(update: Update, context: CallbackContext):
 
     if not step or step == Steps.NONE:
         warn = context.bot.send_message(
-            chat_id,
-            f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
+            chat_id, f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
         )
         context.job_queue.run_once(_delete_after, 4, context=(chat_id, warn.message_id))
 
         if not context.chat_data.get("idle_keyboard_on"):
-            show_idle_keyboard(chat_id, context)   # now persists
+            show_idle_keyboard(chat_id, context)
         return
 
     # Your existing HOURS / COMMENT logic (unchanged)
@@ -511,6 +511,11 @@ dp.add_handler(CommandHandler("report", report_cmd))
 dp.add_handler(CallbackQueryHandler(button_handler))
 dp.add_handler(MessageHandler(Filters.regex(rf"^{IDLE_BUTTON_LABEL}$"), report_from_idle_button))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text_handler))
+
+def on_error(update: Update, context: CallbackContext):
+    logging.exception("Update caused error: %s", context.error)
+
+dp.add_error_handler(on_error)
 
 # -------------- Run application --------------
 
