@@ -130,10 +130,12 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
     # track for cleanup if you like
     context.chat_data["idle_menu_msg_id"] = sent.message_id
 
-def hide_reply_keyboard(chat_id: int, context: CallbackContext, text="Начинаем новый отчёт…"):
-    """Remove the ReplyKeyboard before switching to inline flow."""
-    rm = context.bot.send_message(chat_id, text, reply_markup=ReplyKeyboardRemove())
-    context.user_data.setdefault("to_delete", []).append(rm.message_id)
+def hide_reply_keyboard(chat_id: int, context: CallbackContext):
+    """Silently remove the ReplyKeyboard."""
+    # zero-width space so nothing is shown
+    msg = context.bot.send_message(chat_id, "\u200b", reply_markup=ReplyKeyboardRemove())
+    # delete right after (tiny delay so clients process the removal)
+    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, msg.message_id))
 
 def send_main_menu(chat_id: int, context: CallbackContext):
     """Sends the persistent main menu with the inline button and ensures /report appears."""
@@ -178,7 +180,7 @@ def _delete_after(context: CallbackContext):
     chat_id, msg_id = context.job.context
     try:
         context.bot.delete_message(chat_id, msg_id)
-    except telegram.error.BadRequest:
+    except Exception:
         pass
 
 def button_handler(update: Update, context: CallbackContext):
