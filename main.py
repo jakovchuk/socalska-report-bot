@@ -137,12 +137,14 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
 
     context.chat_data["idle_keyboard_on"] = True
     context.chat_data["idle_menu_msg_id"] = msg.message_id
+    context.user_data.setdefault("to_delete", []).append(msg.message_id)
 
 def hide_reply_keyboard(chat_id: int, context: CallbackContext):
     """Silently remove the ReplyKeyboard and clean old idle bubble."""
     # remove keyboard with an invisible message (delete that one)
     rm = context.bot.send_message(chat_id, INVISIBLE, reply_markup=ReplyKeyboardRemove())
     context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, rm.message_id))
+    context.user_data.setdefault("to_delete", []).append(rm.message_id)
 
     # optionally delete the previous idle bubble too
     prev = context.chat_data.pop("idle_menu_msg_id", None)
@@ -184,13 +186,6 @@ def start(update: Update, context: CallbackContext):
 
 def report_cmd(update: Update, context: CallbackContext):
     return start_report_flow(update, context)
-
-def _delete_after(context: CallbackContext):
-    chat_id, msg_id = context.job.context
-    try:
-        context.bot.delete_message(chat_id, msg_id)
-    except Exception:
-        pass
 
 def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -366,6 +361,13 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
 
 
 # ------------- message handlers -------------
+
+def _delete_after(context: CallbackContext):
+    chat_id, msg_id = context.job.context
+    try:
+        context.bot.delete_message(chat_id, msg_id)
+    except telegram.error.BadRequest:
+        pass
 
 def text_handler(update: Update, context: CallbackContext):
     step = context.user_data.get("step")
