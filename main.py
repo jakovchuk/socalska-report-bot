@@ -447,7 +447,19 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
         f"Ваш отчёт за {month} {year} отправлен.\n\n"
         f"{report}"
     )
-    context.bot.send_message(chat_id, confirmation_text)
+
+    kb = ReplyKeyboardMarkup(
+        [[IDLE_BUTTON_LABEL]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
+    )
+    context.bot.send_message(
+        chat_id,
+        confirmation_text,                       # no visible text
+        reply_markup=kb,
+        disable_notification=True
+    )
 
     # clean up the back-and-forth
     for msg_id in context.user_data.get("to_delete", []):
@@ -459,9 +471,6 @@ def finish_report(user, context: CallbackContext, *, chat_id: int):
 
     # Clear user data
     context.user_data.clear()
-
-    # Return to idle state with the ReplyKeyboard visible
-    show_idle_keyboard(chat_id, context)
 
 
 # -------------- Flask webhook --------------
