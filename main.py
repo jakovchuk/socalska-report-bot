@@ -143,7 +143,6 @@ def hide_reply_keyboard(chat_id: int, context: CallbackContext):
     """Silently remove the ReplyKeyboard and clean old idle bubble."""
     # remove keyboard with an invisible message (delete that one)
     rm = context.bot.send_message(chat_id, INVISIBLE, reply_markup=ReplyKeyboardRemove())
-    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, rm.message_id))
     context.user_data.setdefault("to_delete", []).append(rm.message_id)
 
     # optionally delete the previous idle bubble too
@@ -362,13 +361,6 @@ def ask_comment(chat_id: int, context: CallbackContext, *, edit=False, msg=None)
 
 # ------------- message handlers -------------
 
-def _delete_after(context: CallbackContext):
-    chat_id, msg_id = context.job.context
-    try:
-        context.bot.delete_message(chat_id, msg_id)
-    except telegram.error.BadRequest:
-        pass
-
 def text_handler(update: Update, context: CallbackContext):
     step = context.user_data.get("step")
     chat_id = update.effective_chat.id
@@ -379,7 +371,7 @@ def text_handler(update: Update, context: CallbackContext):
         warn = context.bot.send_message(
             chat_id, f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
         )
-        context.job_queue.run_once(_delete_after, 4, context=(chat_id, warn.message_id))
+        context.user_data.setdefault("to_delete", []).append(warn.message.message_id)
 
         if not context.chat_data.get("idle_keyboard_on"):
             show_idle_keyboard(chat_id, context)
