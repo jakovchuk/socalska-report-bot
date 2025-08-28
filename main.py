@@ -158,30 +158,44 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 # Conversation flow
 # -----------------
 
-def start(update: Update, context: CallbackContext):
-    """/start handler - show menu and register bot commands."""
-    bot.set_my_commands([("report", "Отправить отчёт")])
+def start_report_flow(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
     ensure_reminder(update, context)
-    # Show idle reply keyboard (instead of inline menu)
-    show_idle_keyboard(update.effective_chat.id, context)
+    hide_reply_keyboard(chat_id, context)         # remove idle keyboard silently
+    context.user_data.clear()
+    ask_preaching(chat_id, context)               # kick off the inline flow
+    context.user_data["step"] = Steps.PREACHING
+
+def start(update: Update, context: CallbackContext):
+    bot.set_my_commands([("report", "Отправить отчёт")])
+    return start_report_flow(update, context)
+
+def report_cmd(update: Update, context: CallbackContext):
+    return start_report_flow(update, context)
 
 def report_from_idle_button(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    user_msg_id = update.message.message_id  # the "📝 Отправить отчёт" message
 
     ensure_reminder(update, context)
     hide_reply_keyboard(chat_id, context)  # silently remove the ReplyKeyboard
 
-    context.user_data.clear()
-    ask_preaching(chat_id, context)
-    context.user_data["step"] = Steps.PREACHING
+    # 1) Show "/report" as a reply to the user's button press (visual only)
+    echo = context.bot.send_message(
+        chat_id,
+        "/report",
+        reply_to_message_id=user_msg_id,
+        disable_notification=True,
+        # optional, avoids errors if the original msg disappears
+        allow_sending_without_reply=True
+    )
+    # OPTIONAL: auto-delete the echo after a moment to keep chat clean
+    context.job_queue.run_once(_delete_after, 2, context=(chat_id, echo.message_id))
 
-def report_cmd(update: Update, context: CallbackContext):
-    """/report command - start the reporting flow (same as pressing the button)."""
-    # schedule reminder if missed
-    ensure_reminder(update, context)
-    hide_reply_keyboard(update.effective_chat.id, context)
-    ask_preaching(update.effective_chat.id, context)
+    # 2) Actually start your reporting flow (bot-sent "/report" won't trigger handlers)
+    context.user_data.clear()
     context.user_data["step"] = Steps.PREACHING
+    ask_preaching(chat_id, context)
 
 def _delete_after(context: CallbackContext):
     chat_id, msg_id = context.job.context
