@@ -115,7 +115,10 @@ def daily_check(context: CallbackContext):
 # ---------------
 
 def show_idle_keyboard(chat_id: int, context: CallbackContext):
-    """Show idle ReplyKeyboard without any visible text bubble."""
+    """Show idle ReplyKeyboard; keep the message so the keyboard persists."""
+    if context.chat_data.get("idle_keyboard_on"):
+        return
+    
     kb = ReplyKeyboardMarkup(
         [[IDLE_BUTTON_LABEL]],
         resize_keyboard=True,
@@ -131,16 +134,24 @@ def show_idle_keyboard(chat_id: int, context: CallbackContext):
         disable_notification=True
     )
 
-    # Delete the message shortly after; keyboard stays visible
-    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, msg.message_id))
+    context.chat_data["idle_keyboard_on"] = True
     context.chat_data["idle_menu_msg_id"] = msg.message_id
 
 def hide_reply_keyboard(chat_id: int, context: CallbackContext):
-    """Silently remove the ReplyKeyboard."""
-    # zero-width space so nothing is shown
-    msg = context.bot.send_message(chat_id, "\u200b", reply_markup=ReplyKeyboardRemove())
-    # delete right after (tiny delay so clients process the removal)
-    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, msg.message_id))
+    """Silently remove the ReplyKeyboard and clean old idle bubble."""
+    # remove keyboard with an invisible message (delete that one)
+    rm = context.bot.send_message(chat_id, "\u200b", reply_markup=ReplyKeyboardRemove())
+    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, rm.message_id))
+
+    # optionally delete the previous idle bubble too
+    prev = context.chat_data.pop("idle_menu_msg_id", None)
+    if prev:
+        try:
+            context.bot.delete_message(chat_id, prev)
+        except Exception:
+            pass
+
+    context.chat_data["idle_keyboard_on"] = False
 
 def send_main_menu(chat_id: int, context: CallbackContext):
     """Sends the persistent main menu with the inline button and ensures /report appears."""
@@ -385,14 +396,15 @@ def text_handler(update: Update, context: CallbackContext):
     text = update.message.text.strip()
     context.user_data.setdefault("to_delete", []).append(update.message.message_id)
 
-    # IDLE: no active step — redirect to the idle button
     if not step or step == Steps.NONE:
         warn = context.bot.send_message(
             chat_id,
             f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
         )
         context.job_queue.run_once(_delete_after, 4, context=(chat_id, warn.message_id))
-        show_idle_keyboard(chat_id, context)
+
+        if not context.chat_data.get("idle_keyboard_on"):
+            show_idle_keyboard(chat_id, context)   # now persists
         return
 
     # Your existing HOURS / COMMENT logic (unchanged)
