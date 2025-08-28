@@ -115,20 +115,30 @@ def daily_check(context: CallbackContext):
 # ---------------
 
 def show_idle_keyboard(chat_id: int, context: CallbackContext):
-    """Show a one-button ReplyKeyboard while the bot is idle."""
+    """Show idle ReplyKeyboard without any visible text bubble."""
+    if context.chat_data.get("idle_keyboard_on"):
+        return
+
     kb = ReplyKeyboardMarkup(
         [[IDLE_BUTTON_LABEL]],
         resize_keyboard=True,
         one_time_keyboard=False,
         input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
     )
-    sent = context.bot.send_message(
+
+    # Send zero-width space so the message is “empty”
+    msg = context.bot.send_message(
         chat_id,
-        "Готово! Чтобы начать новый отчёт, нажмите кнопку ниже:",
+        "\u200b",                       # no visible text
         reply_markup=kb,
+        disable_notification=True
     )
-    # track for cleanup if you like
-    context.chat_data["idle_menu_msg_id"] = sent.message_id
+
+    # Delete the message shortly after; keyboard stays visible
+    context.job_queue.run_once(_delete_after, 0.5, context=(chat_id, msg.message_id))
+
+    context.chat_data["idle_keyboard_on"] = True
+    context.chat_data["idle_menu_msg_id"] = msg.message_id
 
 def hide_reply_keyboard(chat_id: int, context: CallbackContext):
     """Silently remove the ReplyKeyboard."""
@@ -162,10 +172,12 @@ def start(update: Update, context: CallbackContext):
 
 def report_from_idle_button(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    ensure_reminder(update, context)  # keep your scheduling
-    hide_reply_keyboard(chat_id, context)  # remove the idle keyboard
-    ask_preaching(chat_id, context)        # continue with your existing inline flow
+
+    ensure_reminder(update, context)
+    hide_reply_keyboard(chat_id, context)  # silently remove the ReplyKeyboard
+
     context.user_data.clear()
+    ask_preaching(chat_id, context)
     context.user_data["step"] = Steps.PREACHING
 
 def report_cmd(update: Update, context: CallbackContext):
