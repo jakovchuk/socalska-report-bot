@@ -220,6 +220,14 @@ def _go_back(step, query, context):
 # ---------- questions helpers ------------
 
 def ask_preaching(chat_id: int, context: CallbackContext, *, edit=False, msg=None):
+    rm = context.bot.send_message(
+        chat_id,
+        "Начинаем новый отчёт.\nПожалуйста, ответьте на несколько вопросов ниже:",
+        reply_markup=ReplyKeyboardRemove(),
+        disable_notification=True,
+    )
+    context.user_data.setdefault("to_delete", []).append(rm.message_id)
+
     text = "Участвовали ли вы в проповедническом служении?"
     keyboard = InlineKeyboardMarkup(
         [
