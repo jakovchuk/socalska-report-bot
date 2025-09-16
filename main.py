@@ -12,7 +12,6 @@ from telegram import (
     Update,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    ForceReply,
 )
 from telegram.ext import (
     CommandHandler,
@@ -339,7 +338,7 @@ def text_handler(update: Update, context: CallbackContext):
             resize_keyboard=True,
             one_time_keyboard=False,
             input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
-            )
+        )
 
         warn = context.bot.send_message(
             chat_id,
