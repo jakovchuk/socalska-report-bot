@@ -25,7 +25,6 @@ from telegram.ext import (
 )
 
 IDLE_BUTTON_LABEL = "📝 Отправить отчёт"
-INVISIBLE = "\u2063"
 
 # =====================
 # ENVIRONMENT VARIABLES
@@ -115,46 +114,6 @@ def daily_check(context: CallbackContext):
 # Helper functions
 # ---------------
 
-def show_idle_keyboard(chat_id: int, context: CallbackContext):
-    """Show idle ReplyKeyboard; keep the message so the keyboard persists."""
-    if context.chat_data.get("idle_keyboard_on"):
-        return
-    
-    kb = ReplyKeyboardMarkup(
-        [[IDLE_BUTTON_LABEL]],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-        input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
-    )
-
-    # Send zero-width space so the message is “empty”
-    msg = context.bot.send_message(
-        chat_id,
-        INVISIBLE,                       # no visible text
-        reply_markup=kb,
-        disable_notification=True
-    )
-
-    context.chat_data["idle_keyboard_on"] = True
-    context.chat_data["idle_menu_msg_id"] = msg.message_id
-    context.user_data.setdefault("to_delete", []).append(msg.message_id)
-
-def hide_reply_keyboard(chat_id: int, context: CallbackContext):
-    """Silently remove the ReplyKeyboard and clean old idle bubble."""
-    # remove keyboard with an invisible message (delete that one)
-    rm = context.bot.send_message(chat_id, INVISIBLE, reply_markup=ReplyKeyboardRemove())
-    context.user_data.setdefault("to_delete", []).append(rm.message_id)
-
-    # optionally delete the previous idle bubble too
-    prev = context.chat_data.pop("idle_menu_msg_id", None)
-    if prev:
-        try:
-            context.bot.delete_message(chat_id, prev)
-        except Exception:
-            pass
-
-    context.chat_data["idle_keyboard_on"] = False
-
 def send_main_menu(chat_id: int, context: CallbackContext):
     """Sends the persistent main menu with the inline button and ensures /report appears."""
     keyboard = InlineKeyboardMarkup(
@@ -174,7 +133,6 @@ def send_main_menu(chat_id: int, context: CallbackContext):
 def start_report_flow(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     ensure_reminder(update, context)
-    hide_reply_keyboard(chat_id, context)         # remove idle keyboard silently
     context.user_data.clear()
     ask_preaching(chat_id, context)               # kick off the inline flow
     context.user_data["step"] = Steps.PREACHING
@@ -368,13 +326,20 @@ def text_handler(update: Update, context: CallbackContext):
     context.user_data.setdefault("to_delete", []).append(update.message.message_id)
 
     if not step or step == Steps.NONE:
-        warn = context.bot.send_message(
-            chat_id, f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже."
-        )
-        context.user_data.setdefault("to_delete", []).append(warn.message.message_id)
+        kb = ReplyKeyboardMarkup(
+            [[IDLE_BUTTON_LABEL]],
+            resize_keyboard=True,
+            one_time_keyboard=False,
+            input_field_placeholder="Нажмите кнопку, чтобы начать новый отчёт"
+            )
 
-        if not context.chat_data.get("idle_keyboard_on"):
-            show_idle_keyboard(chat_id, context)
+        warn = context.bot.send_message(
+            chat_id,
+            f"Чтобы начать новый отчёт, нажмите «{IDLE_BUTTON_LABEL}» ниже.",
+            reply_markup=kb,
+            disable_notification=True
+        )
+        context.user_data.setdefault("to_delete", []).append(warn.message_id)
         return
 
     # Your existing HOURS / COMMENT logic (unchanged)
